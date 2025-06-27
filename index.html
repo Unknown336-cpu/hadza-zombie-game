@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Hadza Warrior: Zombie Siege</title>
+  <style>
+    canvas {
+      background: #1e1e1e;
+      display: block;
+      margin: 0 auto;
+    }
+    body {
+      margin: 0;
+      overflow: hidden;
+    }
+  </style>
+</head>
+<body>
+<canvas id="gameCanvas" width="800" height="600"></canvas>
+<script>
+const backgroundImage = new Image();
+backgroundImage.src = "images/hadza_background.png";
+
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+const keys = {};
+const arrows = [];
+const zombies = [];
+
+let lastShot = 0;
+let assetsLoaded = 0;
+const TOTAL_ASSETS = 2;
+let animationFrame = 0;
+
+const playerSprite = new Image();
+playerSprite.src = "images/hadza_warrior_fixed_sprite.png";
+playerSprite.onload = checkAssetsLoaded;
+playerSprite.onerror = checkAssetsLoaded;
+
+const zombieSprite = new Image();
+zombieSprite.src = "images/zombie_sprite_sheet.png";
+zombieSprite.onload = checkAssetsLoaded;
+zombieSprite.onerror = checkAssetsLoaded;
+
+const player = {
+  x: 400,
+  y: 300,
+  size: 48,
+  speed: 3,
+  angle: 0,
+  health: 100,
+  frame: 0,
+  frameDelay: 0
+};
+
+function checkAssetsLoaded() {
+  assetsLoaded++;
+  if (assetsLoaded >= TOTAL_ASSETS) {
+    requestAnimationFrame(gameLoop);
+  }
+}
+
+function spawnZombie() {
+  const edge = Math.floor(Math.random() * 4);
+  let x, y;
+  if (edge === 0) { x = 0; y = Math.random() * canvas.height; }
+  else if (edge === 1) { x = canvas.width; y = Math.random() * canvas.height; }
+  else if (edge === 2) { x = Math.random() * canvas.width; y = 0; }
+  else { x = Math.random() * canvas.width; y = canvas.height; }
+  zombies.push({ x, y, size: 48, speed: 1.2 });
+}
+
+function shootArrow() {
+  const now = Date.now();
+  if (now - lastShot < 400) return;
+  lastShot = now;
+  const dx = Math.cos(player.angle) * 5;
+  const dy = Math.sin(player.angle) * 5;
+  arrows.push({ x: player.x, y: player.y, dx, dy });
+}
+
+function slashMelee() {
+  zombies.forEach((z, i) => {
+    const dx = z.x - player.x;
+    const dy = z.y - player.y;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    if (dist < 40) zombies.splice(i, 1);
+  });
+}
+
+function update() {
+  let moved = false;
+  if (keys["w"]) { player.y -= player.speed; moved = true; }
+  if (keys["s"]) { player.y += player.speed; moved = true; }
+  if (keys["a"]) { player.x -= player.speed; moved = true; }
+  if (keys["d"]) { player.x += player.speed; moved = true; }
+
+  if (moved) {
+    player.frameDelay++;
+    if (player.frameDelay > 5) {
+      player.frame = (player.frame + 1) % 4;
+      player.frameDelay = 0;
+    }
+  } else {
+    player.frame = 0;
+  }
+
+  arrows.forEach((a, i) => {
+    a.x += a.dx;
+    a.y += a.dy;
+    if (a.x < 0 || a.x > canvas.width || a.y < 0 || a.y > canvas.height) arrows.splice(i, 1);
+  });
+
+  zombies.forEach((z, i) => {
+    const dx = player.x - z.x;
+    const dy = player.y - z.y;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    const angle = Math.atan2(dy, dx);
+    z.x += Math.cos(angle) * z.speed;
+    z.y += Math.sin(angle) * z.speed;
+
+    if (dist < player.size / 2 + z.size / 2) {
+      player.health -= 0.5;
+    }
+  });
+
+  arrows.forEach((a, ai) => {
+    zombies.forEach((z, zi) => {
+      const dx = a.x - z.x;
+      const dy = a.y - z.y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if (dist < z.size / 2) {
+        zombies.splice(zi, 1);
+        arrows.splice(ai, 1);
+      }
+    });
+  });
+}
+
+function draw() {
+  if (backgroundImage.complete && backgroundImage.naturalWidth !== 0) {
+    ctx.drawImage(backgroundImage, 0, 0, canvas.width, canvas.height);
+  } else {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+
+  ctx.save();
+  ctx.translate(player.x, player.y);
+  ctx.rotate(player.angle);
+  if (playerSprite.complete && playerSprite.naturalWidth !== 0) {
+    ctx.drawImage(playerSprite, player.frame * 48, 0, 48, 48, -24, -24, 48, 48);
+  } else {
+    ctx.fillStyle = "#00f";
+    ctx.fillRect(-player.size / 2, -player.size / 2, player.size, player.size);
+  }
+  ctx.restore();
+
+  ctx.fillStyle = "#fff";
+  arrows.forEach(a => ctx.fillRect(a.x - 2, a.y - 2, 4, 4));
+
+  zombies.forEach(z => {
+    if (zombieSprite.complete && zombieSprite.naturalWidth !== 0) {
+      ctx.drawImage(zombieSprite, Math.floor(animationFrame / 10) % 4 * 48, 0, 48, 48, z.x - z.size / 2, z.y - z.size / 2, z.size, z.size);
+    } else {
+      ctx.fillStyle = "#0f0";
+      ctx.beginPath();
+      ctx.arc(z.x, z.y, z.size / 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  });
+
+  ctx.fillStyle = "#f00";
+  ctx.fillRect(10, 10, player.health * 2, 10);
+  ctx.strokeStyle = "#fff";
+  ctx.strokeRect(10, 10, 200, 10);
+}
+
+function gameLoop() {
+  update();
+  draw();
+  animationFrame++;
+  if (player.health > 0) requestAnimationFrame(gameLoop);
+  else alert("Your tribe has fallen...");
+}
+
+setInterval(spawnZombie, 1500);
+
+window.addEventListener("keydown", e => {
+  keys[e.key.toLowerCase()] = true;
+  if (e.key === " ") slashMelee();
+});
+window.addEventListener("keyup", e => {
+  keys[e.key.toLowerCase()] = false;
+});
+
+canvas.addEventListener("mousemove", e => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  player.angle = Math.atan2(my - player.y, mx - player.x);
+});
+canvas.addEventListener("click", shootArrow);
+</script>
+</body>
+</html>
